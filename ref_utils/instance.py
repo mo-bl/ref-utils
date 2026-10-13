@@ -18,6 +18,7 @@ from .error import RefUtilsError
 KEY_PATH = Path("/etc/key")
 INSTANCE_ID_PATH = Path("/etc/instance_id")
 INSTANCE_INFO_URL = "http://ssh-reverse-proxy:8000/api/instance/info"
+INSTANCE_SETTINGS_URL = "http://ssh-reverse-proxy:8000/api/instance/settings"
 
 
 class InstanceInfoError(RefUtilsError):
@@ -34,6 +35,13 @@ class InstanceInfo:
     is_grading_assistant: bool
     exercise_short_name: str
     exercise_version: int
+
+
+@dataclass
+class InstanceSettings:
+    """System-setting values that affect in-container behavior."""
+
+    submission_skip_confirmation: bool
 
 
 _cached_info: ty.Optional[InstanceInfo] = None
@@ -73,6 +81,46 @@ def _fetch_instance_info(timeout_s: float) -> InstanceInfo:
 
     try:
         return InstanceInfo(**data)
+    except TypeError as e:
+        raise InstanceInfoError(f"Response missing or extra fields: {e}") from e
+
+
+def get_instance_settings(timeout_s: float = 10.0) -> InstanceSettings:
+    """Fetch settings the admin has set that affect this container's behavior.
+
+    Result is not cached — admins can flip settings at any time and the
+    next ``task`` invocation should reflect the change.
+
+    Raises:
+        InstanceInfoError: if credentials are missing, the webapp is
+            unreachable, or the response cannot be parsed.
+    """
+    try:
+        key = KEY_PATH.read_bytes()
+        instance_id = int(INSTANCE_ID_PATH.read_text().strip())
+    except OSError as e:
+        raise InstanceInfoError(f"Failed to read instance credentials: {e}") from e
+
+    signed = _sign_request(instance_id, key, {})
+    try:
+        resp = requests.post(INSTANCE_SETTINGS_URL, json=signed, timeout=timeout_s)
+    except requests.RequestException as e:
+        raise InstanceInfoError(f"Failed to reach webapp: {e}") from e
+
+    try:
+        data = resp.json()
+    except ValueError as e:
+        raise InstanceInfoError(f"Invalid JSON response (status={resp.status_code}): {e}") from e
+
+    if resp.status_code != 200:
+        detail = data.get("error", data) if isinstance(data, dict) else data
+        raise InstanceInfoError(f"Settings request failed (status={resp.status_code}): {detail}")
+
+    if not isinstance(data, dict):
+        raise InstanceInfoError(f"Unexpected response body: {data!r}")
+
+    try:
+        return InstanceSettings(**data)
     except TypeError as e:
         raise InstanceInfoError(f"Response missing or extra fields: {e}") from e
 

@@ -30,7 +30,9 @@ __all__ = [
     # Instance
     "InstanceInfo",
     "InstanceInfoError",
+    "InstanceSettings",
     "get_instance_info",
+    "get_instance_settings",
     # Process
     "drop_privileges",
     "run",
@@ -65,7 +67,13 @@ from .decorator import (
     submission_test,
     suppress_run_tests,
 )
-from .instance import InstanceInfo, InstanceInfoError, get_instance_info
+from .instance import (
+    InstanceInfo,
+    InstanceInfoError,
+    InstanceSettings,
+    get_instance_info,
+    get_instance_settings,
+)
 from .process import (
     drop_privileges,
     get_payload_from_executable,
